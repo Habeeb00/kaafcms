@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { blogs } from '@/db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { getBlogById, incrementBlogLikes } from '@/lib/remote-db';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': 'http://localhost:3000',
@@ -20,19 +18,12 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     const { id } = await params;
     
     // Check if blog exists
-    const blog = await db.select().from(blogs).where(eq(blogs.id, id)).get();
+    const blog = await getBlogById(id);
     if (!blog) {
       return NextResponse.json({ error: 'Not found' }, { status: 404, headers: corsHeaders });
     }
 
-    // Increment likes using SQL expression
-    await db.update(blogs)
-      .set({
-        likes: sql`${blogs.likes} + 1`
-      })
-      .where(eq(blogs.id, id));
-
-    const updatedBlog = await db.select().from(blogs).where(eq(blogs.id, id)).get();
+    const updatedBlog = await incrementBlogLikes(id);
     
     return NextResponse.json({ 
       success: true, 

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
-import { Loader2, Menu, X, LogOut, LayoutDashboard, PenTool, Briefcase, Image as ImageIcon, Zap, Trash2 } from 'lucide-react';
+import { Loader2, Menu, X, LogOut, LayoutDashboard, PenTool, Briefcase, Image as ImageIcon, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/ThemeToggle';
 

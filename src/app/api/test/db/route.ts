@@ -1,12 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { blogs } from '@/db/schema';
-import { v4 as uuidv4 } from 'uuid';
+import { NextResponse } from 'next/server';
+import { pingDatabase } from '@/lib/remote-db';
 
 export async function GET() {
   try {
-    // Simple query to check connectivity
-    await db.select({ val: blogs.id }).from(blogs).limit(1);
+    await pingDatabase();
     return NextResponse.json({ ok: true });
   } catch (error: any) {
     console.error('DB Test Error:', error);

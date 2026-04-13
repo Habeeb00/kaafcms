@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { blogs } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { createBlog, listBlogs } from '@/lib/remote-db';
 
 // GET all blogs (public)
 export async function GET() {
   try {
-    const allBlogs = await db.select().from(blogs).orderBy(desc(blogs.createdAt));
+    const allBlogs = await listBlogs();
     return NextResponse.json(allBlogs);
   } catch (e) {
     console.error(e);
@@ -25,7 +23,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Title, slug, and content are required' }, { status: 400 });
     }
 
-    const newBlog = {
+    const newBlog = await createBlog({
       id: uuidv4(),
       title,
       slug,
@@ -35,11 +33,7 @@ export async function POST(req: NextRequest) {
       author: author || null,
       authorImageUrl: authorImageUrl || null,
       readTime: readTime || null,
-      likes: 0,
-      createdAt: new Date(),
-    };
-
-    await db.insert(blogs).values(newBlog);
+    });
     return NextResponse.json(newBlog, { status: 201 });
   } catch (e: any) {
     console.error(e);

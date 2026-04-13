@@ -1,21 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { galleries } from '@/db/schema';
-import { eq } from 'drizzle-orm';
 import { deleteFileByUrl } from '@/lib/storage';
+import { deleteGallery, getGalleryById, updateGallery } from '@/lib/remote-db';
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   
   // 1. Get the image URL before deleting the record
-  const item = await db.select().from(galleries).where(eq(galleries.id, id)).get();
+  const item = await getGalleryById(id);
   if (item?.imageUrl) {
     await deleteFileByUrl(item.imageUrl);
   }
 
-  // 2. Delete from DB
-  await db.delete(galleries)
-    .where(eq(galleries.id, id));
+  await deleteGallery(id);
   
   return NextResponse.json({ success: true });
 }
@@ -23,6 +19,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { title, imageUrl, category } = await req.json();
-  await db.update(galleries).set({ title, imageUrl, category }).where(eq(galleries.id, id));
+  await updateGallery(id, { title, imageUrl, category });
   return NextResponse.json({ success: true });
 }
