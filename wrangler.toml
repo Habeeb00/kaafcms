@@ -5,4 +5,4 @@ pages_build_output_dir = ".next"
 [[d1_databases]]
 binding = "DB"
 database_name = "kaaf-db"
-database_id = "ccbd8ad8-7ba3-4288-975e-ba09b8f0c499" # Provided by user
+database_id = "7ba4d9b6-1da7-45fb-aad2-91ff3ee55f8a" # Provided by user
