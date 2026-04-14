@@ -66,10 +66,12 @@ export async function POST(req: NextRequest) {
             ContentType: file.type,
           }));
           console.log("R2 upload successful");
-          
-          const publicUrl = R2_PUBLIC_DEV_DOMAIN 
-            ? `https://pub-${R2_PUBLIC_DEV_DOMAIN}.r2.dev/${fileKey}`
-            : `/api/r2-proxy?key=${fileKey}`; 
+
+          // R2_PUBLIC_DEV_DOMAIN should be the host prefix without the .r2.dev suffix,
+          // for example: "pub-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx".
+          const publicUrl = R2_PUBLIC_DEV_DOMAIN
+            ? `https://${R2_PUBLIC_DEV_DOMAIN}.r2.dev/${fileKey}`
+            : `/api/r2-proxy?key=${fileKey}`;
 
           return NextResponse.json({ url: publicUrl });
         } catch (s3Error: any) {
