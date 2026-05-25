@@ -17,6 +17,13 @@ interface GalleryItem {
   createdAt: string;
 }
 
+interface UploadItem {
+  id: string;
+  file: File;
+  previewUrl: string;
+  title: string;
+}
+
 export default function GalleryPage() {
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,9 +31,7 @@ export default function GalleryPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [altText, setAltText] = useState('');
+  const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [category, setCategory] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
@@ -48,9 +53,9 @@ export default function GalleryPage() {
   useEffect(() => { loadGallery(); }, [loadGallery]);
 
   function openCreate() {
-    setUploadFile(null);
-    setPreviewUrl(null);
-    setAltText('');
+    // Revoke old object URLs to prevent memory leaks
+    uploadItems.forEach(item => URL.revokeObjectURL(item.previewUrl));
+    setUploadItems([]);
     setCategory('');
     setError('');
     setModalOpen(true);
@@ -58,47 +63,75 @@ export default function GalleryPage() {
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) {
-      setUploadFile(file);
-      setPreviewUrl(URL.createObjectURL(file));
-      if (!altText) setAltText(file.name.replace(/\.[^/.]+$/, ""));
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const newItems: UploadItem[] = Array.from(files).map(file => ({
+        id: Math.random().toString(36).substring(2, 9),
+        file,
+        previewUrl: URL.createObjectURL(file),
+        title: file.name.replace(/\.[^/.]+$/, "")
+      }));
+      setUploadItems(prev => [...prev, ...newItems]);
     }
+  }
+
+  function removeUploadItem(id: string) {
+    setUploadItems(prev => {
+      const target = prev.find(item => item.id === id);
+      if (target) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter(item => item.id !== id);
+    });
+  }
+
+  function updateUploadItemTitle(id: string, title: string) {
+    setUploadItems(prev => prev.map(item => item.id === id ? { ...item, title } : item));
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!uploadFile) {
-      setError('Please select an image file first.');
+    if (uploadItems.length === 0) {
+      setError('Please select at least one image file.');
       return;
     }
 
     setSaving(true);
     setError('');
     try {
-      const formData = new FormData();
-      formData.append("file", uploadFile);
-      formData.append("folder", "gallery");
-      formData.append("subFolder", category || "uncategorized");
+      // Process parallel uploads to R2 and D1 database insertions
+      await Promise.all(uploadItems.map(async (item) => {
+        const formData = new FormData();
+        formData.append("file", item.file);
+        formData.append("folder", "gallery");
+        formData.append("subFolder", category || "uncategorized");
 
-      const upRes = await fetch("/api/upload", {
-        method: "POST", body: formData,
-      });
+        const upRes = await fetch("/api/upload", {
+          method: "POST", body: formData,
+        });
 
-      if (!upRes.ok) throw new Error("Image upload failed");
-      const { url } = await upRes.json();
+        if (!upRes.ok) throw new Error(`Upload failed for "${item.file.name}"`);
+        const { url } = await upRes.json();
 
-      const dbRes = await fetch('/api/gallery', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: altText || 'Untitled', imageUrl: url, category: category || null })
-      });
+        const dbRes = await fetch('/api/gallery', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            title: item.title || 'Untitled', 
+            imageUrl: url, 
+            category: category || null 
+          })
+        });
 
-      if (!dbRes.ok) throw new Error("Failed to save to database");
+        if (!dbRes.ok) throw new Error(`Failed to save "${item.title}" to database`);
+      }));
+
+      // Cleanup object URLs to avoid memory leaks
+      uploadItems.forEach(item => URL.revokeObjectURL(item.previewUrl));
 
       setModalOpen(false);
       loadGallery();
     } catch (err: any) {
-      setError(err.message || 'An unknown error occurred');
+      setError(err.message || 'An unknown error occurred during batch upload');
     } finally {
       setSaving(false);
     }
@@ -127,7 +160,7 @@ export default function GalleryPage() {
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
           <Button onClick={openCreate} className="flex-1 md:flex-none">
-            <Upload className="mr-2 h-4 w-4" /> Upload Image
+            <Upload className="mr-2 h-4 w-4" /> Upload Images
           </Button>
         </div>
       </div>
@@ -175,11 +208,11 @@ export default function GalleryPage() {
 
       {/* Upload Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Upload Image</DialogTitle>
+            <DialogTitle>Upload Images</DialogTitle>
             <DialogDescription>
-              Select an image from your computer to add to the CMS gallery.
+              Select one or multiple images from your computer to add to the CMS gallery.
             </DialogDescription>
           </DialogHeader>
           
@@ -193,40 +226,61 @@ export default function GalleryPage() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="file-upload">Image File *</Label>
-                <Input id="file-upload" type="file" accept="image/*" ref={fileInputRef} onChange={handleFileChange} className="cursor-pointer" />
+                <Label htmlFor="file-upload">Image Files *</Label>
+                <Input id="file-upload" type="file" accept="image/*" multiple ref={fileInputRef} onChange={handleFileChange} className="cursor-pointer" />
               </div>
 
-              {previewUrl ? (
-                <div className="rounded-lg overflow-hidden border border-border bg-muted/30 flex items-center justify-center h-48">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={previewUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+              {uploadItems.length > 0 ? (
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold">Upload Queue ({uploadItems.length} image{uploadItems.length !== 1 ? 's' : ''})</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-72 overflow-y-auto pr-1">
+                    {uploadItems.map(item => (
+                      <div key={item.id} className="flex gap-3 p-3 rounded-lg border border-border bg-card shadow-sm items-center relative group">
+                        <div className="w-16 h-16 rounded overflow-hidden flex-shrink-0 border border-border bg-muted/30 flex items-center justify-center">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={item.previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <Input 
+                            value={item.title} 
+                            onChange={e => updateUploadItemTitle(item.id, e.target.value)} 
+                            placeholder="Title / Alt Text" 
+                            className="h-8 text-xs font-medium"
+                          />
+                          <p className="text-[0.65rem] text-muted-foreground truncate">{item.file.name}</p>
+                        </div>
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10" 
+                          onClick={() => removeUploadItem(item.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="rounded-lg border border-dashed border-border flex flex-col items-center justify-center p-8 h-48 text-muted-foreground bg-muted/10">
                   <Upload className="h-8 w-8 mb-2 opacity-50" />
-                  <p className="text-sm">Preview will appear here</p>
+                  <p className="text-sm">Selected image previews will appear here</p>
                 </div>
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="alt-text">Alt Text / Name</Label>
-                <Input id="alt-text" value={altText} onChange={e => setAltText(e.target.value)} placeholder="e.g. Warehouse exterior shot" />
-                <p className="text-[0.8rem] text-muted-foreground">Useful for accessibility directly in the gallery</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="collection">Collection / Category</Label>
-                <Input id="collection" value={category} onChange={e => setCategory(e.target.value)} placeholder="e.g. Warehousing" />
+                <Label htmlFor="collection">Collection / Category (Applies to all)</Label>
+                <Input id="collection" value={category} onChange={e => setCategory(e.target.value)} placeholder="e.g. GLA Shenzhen 2026" />
                 <p className="text-[0.8rem] text-muted-foreground">This will also be the folder name in storage</p>
               </div>
             </div>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={saving || !uploadFile}>
+              <Button type="submit" disabled={saving || uploadItems.length === 0}>
                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {saving ? 'Uploading...' : 'Upload Image'}
+                {saving ? `Uploading (${uploadItems.length})...` : `Upload ${uploadItems.length > 0 ? uploadItems.length : ''} Image${uploadItems.length !== 1 ? 's' : ''}`}
               </Button>
             </DialogFooter>
           </form>

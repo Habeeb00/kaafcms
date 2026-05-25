@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { createBlog, listBlogs } from '@/lib/remote-db';
 
+export const dynamic = 'force-dynamic';
+
 // GET all blogs (public)
 export async function GET() {
   try {
